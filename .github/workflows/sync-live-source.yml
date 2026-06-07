@@ -2,6 +2,8 @@ name: Sync live Martebak26 source
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
   push:
     branches: [main]
     paths:
