@@ -1,0 +1,35 @@
+name: Sync live Martebak26 source
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/sync-trigger.txt'
+      - '.github/workflows/sync-live-source.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync-live-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch live source files
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://worklifebalance.qzz.io/index.html?v=github-sync" -o index.html
+          curl -fsSL "https://worklifebalance.qzz.io/server.js?v=github-sync" -o server.js
+      - name: Commit source update
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html server.js
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+          else
+            git commit -m "Sync live application source"
+            git push
+          fi
