@@ -1,0 +1,9 @@
+{
+  "name": "martebak26",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Martebak26 production static web app",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
