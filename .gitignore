@@ -1,0 +1,7 @@
+node_modules/
+data.json
+*-table.txt
+activity-log.txt
+fifa-sync-log.txt
+.env
+.env.*
