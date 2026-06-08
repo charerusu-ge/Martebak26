@@ -433,6 +433,13 @@ function loginLockMessage(lockedUntil) {
   return `Akun dikunci sementara karena 3 kali salah login. Silakan coba login kembali setelah ${minutes} menit.`;
 }
 
+function loginFailureMessage(failed, lockedUntil) {
+  if (lockedUntil) return `Mampus!! ${loginLockMessage(lockedUntil)}`;
+  if (Number(failed || 0) === 1) return "Salah GOBLOG , inget lagi yg bener!";
+  if (Number(failed || 0) === 2) return "Uda PIKUN lu??! coba lagi tolol";
+  return "Login gagal.";
+}
+
 function currentLoginLock(state, key) {
   state.loginSecurity = cleanLoginSecurity(state.loginSecurity || {});
   const record = state.loginSecurity[key];
@@ -1358,9 +1365,9 @@ const server = http.createServer((req, res) => {
         writeState(state);
         activityLog(req, "login-password-mismatch", { name, role: user.role || "participant", failed: failed.failed, lockedUntil: failed.lockedUntil || null });
         if (failed.lockedUntil) {
-          return send(res, 423, JSON.stringify({ error: loginLockMessage(failed.lockedUntil), lockedUntil: failed.lockedUntil }), "application/json; charset=utf-8");
+          return send(res, 423, JSON.stringify({ error: loginFailureMessage(failed.failed, failed.lockedUntil), lockedUntil: failed.lockedUntil }), "application/json; charset=utf-8");
         }
-        return send(res, 401, JSON.stringify({ error: `Password tidak cocok. Sisa percobaan sebelum akun dikunci: ${maxLoginFailures - failed.failed}.` }), "application/json; charset=utf-8");
+        return send(res, 401, JSON.stringify({ error: loginFailureMessage(failed.failed) }), "application/json; charset=utf-8");
       }
       if (!user) {
         if (Date.now() >= registrationCloseAt) {
@@ -1368,9 +1375,9 @@ const server = http.createServer((req, res) => {
           writeState(state);
           activityLog(req, "register-closed", { name, phone, failed: failed.failed, lockedUntil: failed.lockedUntil || null });
           if (failed.lockedUntil) {
-            return send(res, 423, JSON.stringify({ error: loginLockMessage(failed.lockedUntil), lockedUntil: failed.lockedUntil }), "application/json; charset=utf-8");
+            return send(res, 423, JSON.stringify({ error: loginFailureMessage(failed.failed, failed.lockedUntil), lockedUntil: failed.lockedUntil }), "application/json; charset=utf-8");
           }
-          return send(res, 403, JSON.stringify({ error: "Pendaftaran peserta baru sudah ditutup pada 11 Juni 2026 pukul 09.00 WIB. Silakan login dengan akun yang sudah terdaftar." }), "application/json; charset=utf-8");
+          return send(res, 403, JSON.stringify({ error: loginFailureMessage(failed.failed) }), "application/json; charset=utf-8");
         }
         user = { name, password, phone, role: "participant" };
         state.users.push(user);
