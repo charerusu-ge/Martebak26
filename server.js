@@ -30,6 +30,7 @@ const fixedParticipantCredentials = [
 const sessions = new Map();
 const maxLoginFailures = 3;
 const loginLockMs = 60 * 60 * 1000;
+const sessionIdleMs = 5 * 60 * 1000;
 const mediaIndonesiaScheduleUrl = process.env.MEDIA_INDONESIA_SCHEDULE_URL || "https://mediaindonesia.com/piala-dunia-2026/895180/jadwal-lengkap-piala-dunia-2026-wib-104-pertandingan-fase-grup-hingga-final";
 const liveScoreUrl = process.env.LIVESCORE_SYNC_URL || "https://www.livescore.com/en/football/international/world-cup-2026/";
 const marketPredictionUrl = process.env.MARKET_PREDICTION_URL || "https://www.aiscore.com/world-cup";
@@ -1146,6 +1147,12 @@ function authUser(req) {
   if (!token) return null;
   const session = sessions.get(token);
   if (!session) return null;
+  if (Date.now() - Number(session.lastActivity || session.createdAt || 0) > sessionIdleMs) {
+    sessions.delete(token);
+    activityLog(req, "session-idle-expired", { name: session.name });
+    return null;
+  }
+  session.lastActivity = Date.now();
   const state = readState();
   return state.users.find(user => String(user.name).toLowerCase() === String(session.name).toLowerCase()) || null;
 }
@@ -1389,7 +1396,7 @@ const server = http.createServer((req, res) => {
       writeState(state);
       const { password: _, ...safeUser } = user;
       const token = crypto.randomBytes(32).toString("hex");
-      sessions.set(token, { name: user.name, createdAt: Date.now() });
+      sessions.set(token, { name: user.name, createdAt: Date.now(), lastActivity: Date.now() });
       activityLog(req, "login-success", { name: user.name, phone: user.phone || "", role: user.role || "participant" });
       return send(res, 200, JSON.stringify({ token, user: safeUser, state: publicState(readState()) }), "application/json; charset=utf-8");
     });
