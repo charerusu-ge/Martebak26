@@ -28,6 +28,8 @@ const fixedParticipantCredentials = [
   { name: "Hidup korupsi", password: "Lolipop123!@#" }
 ];
 const sessions = new Map();
+const maxLoginFailures = 3;
+const loginLockMs = 60 * 60 * 1000;
 const mediaIndonesiaScheduleUrl = process.env.MEDIA_INDONESIA_SCHEDULE_URL || "https://mediaindonesia.com/piala-dunia-2026/895180/jadwal-lengkap-piala-dunia-2026-wib-104-pertandingan-fase-grup-hingga-final";
 const liveScoreUrl = process.env.LIVESCORE_SYNC_URL || "https://www.livescore.com/en/football/international/world-cup-2026/";
 const marketPredictionUrl = process.env.MARKET_PREDICTION_URL || "https://www.aiscore.com/world-cup";
@@ -141,11 +143,13 @@ function ensureState(data) {
     notif: Array.isArray(data.notif) ? data.notif : [],
     telegram: data.telegram || {},
     messages: Array.isArray(data.messages) ? data.messages : [],
-    online: data.online || {}
+    online: data.online || {},
+    loginSecurity: data.loginSecurity || {}
   };
   const now = Date.now();
   state.messages = state.messages.filter(message => !message.expiresAt || new Date(message.expiresAt).getTime() > now);
   state.online = Object.fromEntries(Object.entries(state.online || {}).filter(([, rec]) => now - new Date(rec.lastSeen || 0).getTime() <= 90_000));
+  state.loginSecurity = cleanLoginSecurity(state.loginSecurity);
   const admin = state.users.find(user => String(user.name).toLowerCase() === "admin");
   if (admin) Object.assign(admin, adminAccount);
   else state.users.unshift({ ...adminAccount });
@@ -162,7 +166,7 @@ function ensureState(data) {
 
 function publicState(state) {
   const now = Date.now();
-  const { telegram, ...safeState } = state;
+  const { telegram, loginSecurity, ...safeState } = state;
   return {
     ...safeState,
     users: state.users.map(({ password, ...user }) => user),
@@ -407,6 +411,52 @@ function requestIp(req) {
   return String(req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "")
     .split(",")[0]
     .trim();
+}
+
+function loginAttemptKey(name, req) {
+  const normalized = String(name || "").trim().toLowerCase();
+  return normalized ? `user:${normalized}` : `ip:${requestIp(req) || "unknown"}`;
+}
+
+function cleanLoginSecurity(records = {}) {
+  const now = Date.now();
+  return Object.fromEntries(Object.entries(records || {}).filter(([, rec]) => {
+    const lockedUntil = new Date(rec.lockedUntil || 0).getTime();
+    const lastFailedAt = new Date(rec.lastFailedAt || 0).getTime();
+    return lockedUntil > now || (Number(rec.failed || 0) > 0 && now - lastFailedAt < loginLockMs);
+  }));
+}
+
+function loginLockMessage(lockedUntil) {
+  const remainingMs = Math.max(0, new Date(lockedUntil || 0).getTime() - Date.now());
+  const minutes = Math.max(1, Math.ceil(remainingMs / 60000));
+  return `Akun dikunci sementara karena 3 kali salah login. Silakan coba login kembali setelah ${minutes} menit.`;
+}
+
+function currentLoginLock(state, key) {
+  state.loginSecurity = cleanLoginSecurity(state.loginSecurity || {});
+  const record = state.loginSecurity[key];
+  if (!record?.lockedUntil) return null;
+  return new Date(record.lockedUntil).getTime() > Date.now() ? record : null;
+}
+
+function recordFailedLogin(state, key) {
+  state.loginSecurity = cleanLoginSecurity(state.loginSecurity || {});
+  const now = Date.now();
+  const record = state.loginSecurity[key] || { failed: 0 };
+  record.failed = Number(record.failed || 0) + 1;
+  record.lastFailedAt = new Date(now).toISOString();
+  if (record.failed >= maxLoginFailures) {
+    record.failed = maxLoginFailures;
+    record.lockedUntil = new Date(now + loginLockMs).toISOString();
+  }
+  state.loginSecurity[key] = record;
+  return record;
+}
+
+function resetLoginFailures(state, key) {
+  if (!state.loginSecurity) return;
+  delete state.loginSecurity[key];
 }
 
 function activityLog(req, event, details = {}) {
@@ -1296,14 +1346,30 @@ const server = http.createServer((req, res) => {
         activityLog(req, "login-missing-field", { name, phoneProvided: Boolean(phone) });
         return send(res, 400, JSON.stringify({ error: "Nama, password, dan nomor HP wajib diisi" }), "application/json; charset=utf-8");
       }
+      const lockKey = loginAttemptKey(name, req);
+      const activeLock = currentLoginLock(state, lockKey);
+      if (activeLock) {
+        activityLog(req, "login-locked", { name, lockedUntil: activeLock.lockedUntil });
+        return send(res, 423, JSON.stringify({ error: loginLockMessage(activeLock.lockedUntil), lockedUntil: activeLock.lockedUntil }), "application/json; charset=utf-8");
+      }
       let user = state.users.find(item => String(item.name).toLowerCase() === name.toLowerCase());
       if (user && user.password !== password) {
-        activityLog(req, "login-password-mismatch", { name, role: user.role || "participant", hasStoredPassword: Boolean(user.password) });
-        return send(res, 401, JSON.stringify({ error: "Password tidak cocok" }), "application/json; charset=utf-8");
+        const failed = recordFailedLogin(state, lockKey);
+        writeState(state);
+        activityLog(req, "login-password-mismatch", { name, role: user.role || "participant", failed: failed.failed, lockedUntil: failed.lockedUntil || null });
+        if (failed.lockedUntil) {
+          return send(res, 423, JSON.stringify({ error: loginLockMessage(failed.lockedUntil), lockedUntil: failed.lockedUntil }), "application/json; charset=utf-8");
+        }
+        return send(res, 401, JSON.stringify({ error: `Password tidak cocok. Sisa percobaan sebelum akun dikunci: ${maxLoginFailures - failed.failed}.` }), "application/json; charset=utf-8");
       }
       if (!user) {
         if (Date.now() >= registrationCloseAt) {
-          activityLog(req, "register-closed", { name, phone });
+          const failed = recordFailedLogin(state, lockKey);
+          writeState(state);
+          activityLog(req, "register-closed", { name, phone, failed: failed.failed, lockedUntil: failed.lockedUntil || null });
+          if (failed.lockedUntil) {
+            return send(res, 423, JSON.stringify({ error: loginLockMessage(failed.lockedUntil), lockedUntil: failed.lockedUntil }), "application/json; charset=utf-8");
+          }
           return send(res, 403, JSON.stringify({ error: "Pendaftaran peserta baru sudah ditutup pada 11 Juni 2026 pukul 09.00 WIB. Silakan login dengan akun yang sudah terdaftar." }), "application/json; charset=utf-8");
         }
         user = { name, password, phone, role: "participant" };
@@ -1312,6 +1378,7 @@ const server = http.createServer((req, res) => {
       } else if (phone && user.role !== "admin") {
         user.phone = phone;
       }
+      resetLoginFailures(state, lockKey);
       writeState(state);
       const { password: _, ...safeUser } = user;
       const token = crypto.randomBytes(32).toString("hex");
