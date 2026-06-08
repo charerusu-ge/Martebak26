@@ -1,2 +1,2 @@
-sync requested at 2026-06-08T20:14:45+07:00
-reason: login failure popup messages
+sync requested at 2026-06-08T20:25:30+07:00
+reason: idle auto logout after 5 minutes
