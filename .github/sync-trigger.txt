@@ -1,2 +1,2 @@
-sync requested at 2026-06-08T20:25:30+07:00
-reason: idle auto logout after 5 minutes
+sync requested at 2026-06-08T20:33:20+07:00
+reason: idle logout popup text update
