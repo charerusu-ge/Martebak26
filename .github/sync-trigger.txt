@@ -1,2 +1,2 @@
-sync requested at 2026-06-08T20:42:10+07:00
-reason: login register step popup notifications
+sync requested at 2026-06-11T09:05:00+07:00
+reason: registration close time changed to 22.00 WIB
