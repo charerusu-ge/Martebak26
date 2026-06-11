@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T22:18:00+07:00
-reason: remove final weekly prediction button keep save draft only
+sync requested at 2026-06-11T22:32:00+07:00
+reason: mobile layout optimization for Martebak26
