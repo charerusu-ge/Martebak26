@@ -350,7 +350,7 @@ function autoLockExpiredPredictions(state) {
   }
 }
 
-function lockPredictionWeeks(state, userName, predictions) {
+function lockPredictionMatchesFromPredictions(state, userName, predictions) {
   lockPredictionMatches(state, userName, predictions);
 }
 
@@ -1536,13 +1536,13 @@ const server = http.createServer((req, res) => {
             activityLog(req, "prediction-save-before-week-open", { user: user.name, week: notOpenWeek });
             return send(res, 403, JSON.stringify({ error: "Prediksi minggu ini belum terbuka. Periode setelah minggu 1 baru dapat diisi 1 hari sebelum periode tersebut." }), "application/json; charset=utf-8");
           }
-          const lockedWeek = hasLockedPredictionChange(currentState, user.name, userPredictions);
-          if (lockedWeek) {
-            activityLog(req, "prediction-change-denied-locked", { user: user.name, week: lockedWeek });
-            return send(res, 403, JSON.stringify({ error: "Prediksi minggu ini sudah tersimpan dan tidak dapat dirubah kembali sampai final FIFA World Cup selesai." }), "application/json; charset=utf-8");
+          const lockedMatchId = hasLockedPredictionChange(currentState, user.name, userPredictions);
+          if (lockedMatchId) {
+            activityLog(req, "prediction-change-denied-locked", { user: user.name, matchId: lockedMatchId });
+            return send(res, 403, JSON.stringify({ error: "Prediksi pertandingan ini sudah terkunci dan tidak dapat dirubah kembali." }), "application/json; charset=utf-8");
           }
           data.pred = { ...currentState.pred, [user.name]: userPredictions };
-          if (data.lockPrediction === true) lockPredictionWeeks(currentState, user.name, userPredictions);
+          if (data.lockPrediction === true) lockPredictionMatchesFromPredictions(currentState, user.name, userPredictions);
           data.predLocks = currentState.predLocks || {};
           data.schedule = undefined;
           data.actual = undefined;
