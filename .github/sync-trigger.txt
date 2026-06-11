@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T23:39:00+07:00
-reason: change login lock duration to 30 seconds without password reset
+sync requested at 2026-06-12T00:45:00+07:00
+reason: remove weekly prediction locks and keep match-only lock behavior
