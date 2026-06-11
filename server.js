@@ -128,8 +128,58 @@ function readState() {
 
 function writeState(data) {
   const state = ensureState(data);
+  backupDataFile();
   fs.writeFileSync(dataFile, JSON.stringify(state, null, 2));
   writeAllTextTables(state);
+}
+
+function backupDataFile() {
+  try {
+    if (!fs.existsSync(dataFile)) return;
+    const backupDir = path.join(root, "data-backups");
+    fs.mkdirSync(backupDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    fs.copyFileSync(dataFile, path.join(backupDir, `data-${stamp}.json`));
+    const backups = fs.readdirSync(backupDir)
+      .filter(name => /^data-.*\.json$/.test(name))
+      .sort();
+    while (backups.length > 50) {
+      fs.unlinkSync(path.join(backupDir, backups.shift()));
+    }
+  } catch {}
+}
+
+function recoverParticipantsFromActivityLog(state) {
+  try {
+    if (!fs.existsSync(activityLogFile)) return state;
+    const byName = new Map((state.users || []).map(user => [String(user.name).toLowerCase(), user]));
+    const fixedPasswords = new Map(fixedParticipantCredentials.map(item => [item.name.toLowerCase(), item.password]));
+    fixedPasswords.set("odir", "P@ssw0rd.1");
+    const ignored = new Set(["codex-lock-test", "charled", "wizars"]);
+    const lines = fs.readFileSync(activityLogFile, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      const parts = line.split("\t");
+      const action = parts[4];
+      if (action !== "register-success" && action !== "login-success") continue;
+      try {
+        const payload = JSON.parse(parts.slice(5).join("\t"));
+        if ((payload.role || "participant") !== "participant") continue;
+        const name = String(payload.name || "").trim();
+        if (!name) continue;
+        const key = name.toLowerCase();
+        if (ignored.has(key) || byName.has(key)) continue;
+        const user = {
+          name,
+          phone: payload.phone || "",
+          role: "participant",
+          password: fixedPasswords.get(key) || "P@ssw0rd.1"
+        };
+        state.users.push(user);
+        byName.set(key, user);
+      } catch {}
+    }
+  } catch {}
+  return state;
 }
 
 function ensureState(data) {
@@ -161,6 +211,7 @@ function ensureState(data) {
     const participant = state.users.find(user => String(user.name).toLowerCase() === fixed.name.toLowerCase());
     if (participant) participant.password = fixed.password;
   }
+  recoverParticipantsFromActivityLog(state);
   autoLockExpiredPredictions(state);
   return state;
 }
