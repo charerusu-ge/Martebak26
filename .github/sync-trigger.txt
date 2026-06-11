@@ -1,2 +1,2 @@
-sync requested at 2026-06-12T00:45:00+07:00
-reason: remove weekly prediction locks and keep match-only lock behavior
+sync requested at 2026-06-12T00:49:00+07:00
+reason: keep predictions as draft until per-match deadline auto lock
