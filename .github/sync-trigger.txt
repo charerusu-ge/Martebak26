@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T23:24:00+07:00
-reason: restore predictions and harden data json bom parsing
+sync requested at 2026-06-11T23:39:00+07:00
+reason: change login lock duration to 30 seconds without password reset
