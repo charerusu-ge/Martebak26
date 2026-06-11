@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T21:10:00+07:00
-reason: participant restore and data recovery hardening
+sync requested at 2026-06-11T21:25:00+07:00
+reason: remove Espelho participant and ignore recovery
