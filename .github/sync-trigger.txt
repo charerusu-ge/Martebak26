@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T21:25:00+07:00
-reason: remove Espelho participant and ignore recovery
+sync requested at 2026-06-11T21:45:00+07:00
+reason: scoring 3-1-0 per match deadline and remove Nizar users
