@@ -29,7 +29,7 @@ const fixedParticipantCredentials = [
 ];
 const sessions = new Map();
 const maxLoginFailures = 3;
-const loginLockMs = 60 * 60 * 1000;
+const loginLockMs = 30 * 1000;
 const sessionIdleMs = 5 * 60 * 1000;
 const mediaIndonesiaScheduleUrl = process.env.MEDIA_INDONESIA_SCHEDULE_URL || "https://mediaindonesia.com/piala-dunia-2026/895180/jadwal-lengkap-piala-dunia-2026-wib-104-pertandingan-fase-grup-hingga-final";
 const liveScoreUrl = process.env.LIVESCORE_SYNC_URL || "https://www.livescore.com/en/football/international/world-cup-2026/";
@@ -515,7 +515,15 @@ function loginAttemptKey(name, req) {
 
 function cleanLoginSecurity(records = {}) {
   const now = Date.now();
-  return Object.fromEntries(Object.entries(records || {}).filter(([, rec]) => {
+  return Object.fromEntries(Object.entries(records || {}).map(([key, rec]) => {
+    const lastFailedAt = new Date(rec.lastFailedAt || 0).getTime();
+    const maxLockedUntil = lastFailedAt ? lastFailedAt + loginLockMs : 0;
+    const lockedUntil = new Date(rec.lockedUntil || 0).getTime();
+    if (lockedUntil && maxLockedUntil && lockedUntil > maxLockedUntil) {
+      rec.lockedUntil = new Date(maxLockedUntil).toISOString();
+    }
+    return [key, rec];
+  }).filter(([, rec]) => {
     const lockedUntil = new Date(rec.lockedUntil || 0).getTime();
     const lastFailedAt = new Date(rec.lastFailedAt || 0).getTime();
     return lockedUntil > now || (Number(rec.failed || 0) > 0 && now - lastFailedAt < loginLockMs);
@@ -524,8 +532,8 @@ function cleanLoginSecurity(records = {}) {
 
 function loginLockMessage(lockedUntil) {
   const remainingMs = Math.max(0, new Date(lockedUntil || 0).getTime() - Date.now());
-  const minutes = Math.max(1, Math.ceil(remainingMs / 60000));
-  return `Akun dikunci sementara karena 3 kali salah login. Silakan coba login kembali setelah ${minutes} menit.`;
+  const seconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  return `Akun dikunci sementara karena 3 kali salah login. Silakan coba login kembali setelah ${seconds} detik.`;
 }
 
 function loginFailureMessage(failed, lockedUntil) {
