@@ -52,7 +52,7 @@ let syncStatus = { running: false, lastRun: null, lastOk: null, lastError: null,
 let liveScoreStatus = { running: false, lastRun: null, lastOk: null, lastError: null, updatedScores: 0, source: liveScoreUrl };
 let marketPredictionStatus = { running: false, lastRun: null, lastOk: null, lastError: null, updated: 0, found: 0, source: marketPredictionUrl };
 const predictionOpenAt = new Date("2026-06-11T09:00:00+07:00").getTime();
-const registrationCloseAt = new Date("2026-06-11T09:00:00+07:00").getTime();
+const registrationCloseAt = new Date("2026-06-11T22:00:00+07:00").getTime();
 const weekDeadlines = {
   w1: new Date("2026-06-11T19:00:00+07:00").getTime(),
   w2: new Date("2026-06-18T16:00:00+07:00").getTime(),
