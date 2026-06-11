@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T09:18:00+07:00
-reason: prediction deadlines week 2 and week 3 changed to 22.00 WIB
+sync requested at 2026-06-11T09:26:00+07:00
+reason: prediction deadline week 1 changed to 23.59 WIB
