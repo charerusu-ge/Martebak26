@@ -54,7 +54,7 @@ let marketPredictionStatus = { running: false, lastRun: null, lastOk: null, last
 const predictionOpenAt = new Date("2026-06-11T09:00:00+07:00").getTime();
 const registrationCloseAt = new Date("2026-06-11T22:00:00+07:00").getTime();
 const weekDeadlines = {
-  w1: new Date("2026-06-11T19:00:00+07:00").getTime(),
+  w1: new Date("2026-06-11T23:59:00+07:00").getTime(),
   w2: new Date("2026-06-17T22:00:00+07:00").getTime(),
   w3: new Date("2026-06-24T22:00:00+07:00").getTime(),
   ko: new Date("2026-06-28T16:00:00+07:00").getTime()
