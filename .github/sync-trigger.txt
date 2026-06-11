@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T09:05:00+07:00
-reason: registration close time changed to 22.00 WIB
+sync requested at 2026-06-11T09:18:00+07:00
+reason: prediction deadlines week 2 and week 3 changed to 22.00 WIB
