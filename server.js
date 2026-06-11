@@ -120,7 +120,8 @@ function readJsonBody(req, callback) {
 
 function readState() {
   try {
-    return mergeParticipantsTable(ensureState(JSON.parse(fs.readFileSync(dataFile, "utf8"))));
+    const raw = fs.readFileSync(dataFile, "utf8").replace(/^\uFEFF/, "");
+    return mergeParticipantsTable(ensureState(JSON.parse(raw)));
   } catch {
     return mergeParticipantsTable(ensureState({}));
   }
