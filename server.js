@@ -350,10 +350,6 @@ function autoLockExpiredPredictions(state) {
   }
 }
 
-function lockPredictionMatchesFromPredictions(state, userName, predictions) {
-  lockPredictionMatches(state, userName, predictions);
-}
-
 function lockPredictionMatches(state, userName, predictions) {
   const matchIds = Object.keys(predictions || {});
   if (!matchIds.length) return;
@@ -1542,7 +1538,6 @@ const server = http.createServer((req, res) => {
             return send(res, 403, JSON.stringify({ error: "Prediksi pertandingan ini sudah terkunci dan tidak dapat dirubah kembali." }), "application/json; charset=utf-8");
           }
           data.pred = { ...currentState.pred, [user.name]: userPredictions };
-          if (data.lockPrediction === true) lockPredictionMatchesFromPredictions(currentState, user.name, userPredictions);
           data.predLocks = currentState.predLocks || {};
           data.schedule = undefined;
           data.actual = undefined;
@@ -1553,10 +1548,10 @@ const server = http.createServer((req, res) => {
           data.telegram = { ...currentState.telegram, [user.name]: data.telegram?.[user.name] || currentState.telegram?.[user.name] };
           data.messages = currentState.messages;
           data.online = currentState.online;
-          activityLog(req, data.lockPrediction === true ? "prediction-final-save" : "prediction-draft-save", {
+          activityLog(req, "prediction-draft-save", {
             user: user.name,
             predictionCount: Object.keys(userPredictions).length,
-            locked: data.lockPrediction === true
+            locked: false
           });
         } else {
           activityLog(req, "admin-state-write", { user: user.name });
