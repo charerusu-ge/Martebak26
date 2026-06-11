@@ -155,7 +155,7 @@ function recoverParticipantsFromActivityLog(state) {
     const byName = new Map((state.users || []).map(user => [String(user.name).toLowerCase(), user]));
     const fixedPasswords = new Map(fixedParticipantCredentials.map(item => [item.name.toLowerCase(), item.password]));
     fixedPasswords.set("odir", "P@ssw0rd.1");
-    const ignored = new Set(["codex-lock-test", "charled", "wizars", "espelho"]);
+    const ignored = new Set(["codex-lock-test", "charled", "wizars", "espelho", "nizar yoga", "muhammad nizar yoga pratama"]);
     const lines = fs.readFileSync(activityLogFile, "utf8").split(/\r?\n/);
     for (const line of lines) {
       const parts = line.split("\t");
@@ -231,23 +231,63 @@ function participantStats(state, name) {
   const predictions = state.pred?.[name] || {};
   let points = 0;
   let correct = 0;
+  let outcome = 0;
   let wrong = 0;
   for (const [matchId, prediction] of Object.entries(predictions)) {
     const actual = state.actual?.[matchId];
     if (!actual?.final) continue;
-    if (Number(prediction.home) === Number(actual.home) && Number(prediction.away) === Number(actual.away)) {
-      points++;
+    const score = predictionScore(prediction, actual);
+    points += score.points;
+    if (score.type === "exact") {
       correct++;
+    } else if (score.type === "outcome") {
+      outcome++;
     } else {
       wrong++;
     }
   }
-  return { points, total: Object.keys(predictions).length, correct, wrong };
+  return { points, total: Object.keys(predictions).length, correct, outcome, wrong };
+}
+
+function scoreOutcome(home, away) {
+  const h = Number(home);
+  const a = Number(away);
+  if (h > a) return "home";
+  if (h < a) return "away";
+  return "draw";
+}
+
+function predictionScore(prediction, actual) {
+  if (!prediction || !actual?.final) return { points: 0, type: "waiting" };
+  const exact = Number(prediction.home) === Number(actual.home) && Number(prediction.away) === Number(actual.away);
+  if (exact) return { points: 3, type: "exact" };
+  const predictedOutcome = scoreOutcome(prediction.home, prediction.away);
+  const actualOutcome = scoreOutcome(actual.home, actual.away);
+  if (predictedOutcome === actualOutcome) return { points: 1, type: "outcome" };
+  return { points: 0, type: "wrong" };
 }
 
 function matchWeek(state, matchId) {
   const match = (state.schedule || []).find(item => String(item.id) === String(matchId));
   return match?.week || "";
+}
+
+function matchById(state, matchId) {
+  return (state.schedule || []).find(item => String(item.id) === String(matchId));
+}
+
+function matchKickoffMs(match) {
+  if (!match?.date) return 0;
+  const time = String(match.time || "00:00").padStart(5, "0").slice(0, 5);
+  const timezone = match.timezone || "WIB";
+  const offset = timezone === "WIB" ? "+07:00" : "+07:00";
+  const value = new Date(`${match.date}T${time}:00${offset}`).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
+function matchDeadlinePassed(state, matchId) {
+  const kickoff = matchKickoffMs(matchById(state, matchId));
+  return kickoff ? Date.now() > kickoff - 60 * 60 * 1000 : false;
 }
 
 function predictionWeeks(state, predictions) {
@@ -264,13 +304,11 @@ function hasLockedPredictionChange(state, userName, incomingPredictions) {
   const locks = state.predLocks?.[userName] || {};
   const currentPredictions = state.pred?.[userName] || {};
   for (const [matchId, prediction] of Object.entries(incomingPredictions || {})) {
-    const week = matchWeek(state, matchId);
-    if (!week || (!locks[week] && !weekDeadlinePassed(week))) continue;
-    if (!samePrediction(currentPredictions[matchId], prediction)) return week;
+    if (!locks[matchId] && !matchDeadlinePassed(state, matchId)) continue;
+    if (!samePrediction(currentPredictions[matchId], prediction)) return matchId;
   }
   for (const matchId of Object.keys(currentPredictions)) {
-    const week = matchWeek(state, matchId);
-    if (week && (locks[week] || weekDeadlinePassed(week)) && !(matchId in (incomingPredictions || {}))) return week;
+    if ((locks[matchId] || matchDeadlinePassed(state, matchId)) && !(matchId in (incomingPredictions || {}))) return matchId;
   }
   return "";
 }
@@ -305,27 +343,30 @@ function autoLockExpiredPredictions(state) {
   for (const [userName, predictions] of Object.entries(state.pred || {})) {
     const expiredPredictions = {};
     for (const [matchId, prediction] of Object.entries(predictions || {})) {
-      const week = matchWeek(state, matchId);
-      if (week && weekDeadlinePassed(week)) expiredPredictions[matchId] = prediction;
+      if (matchDeadlinePassed(state, matchId)) expiredPredictions[matchId] = prediction;
     }
-    lockPredictionWeeks(state, userName, expiredPredictions);
+    lockPredictionMatches(state, userName, expiredPredictions);
   }
 }
 
 function lockPredictionWeeks(state, userName, predictions) {
-  const weeks = predictionWeeks(state, predictions);
-  if (!weeks.length) return;
+  lockPredictionMatches(state, userName, predictions);
+}
+
+function lockPredictionMatches(state, userName, predictions) {
+  const matchIds = Object.keys(predictions || {});
+  if (!matchIds.length) return;
   state.predLocks = state.predLocks || {};
   state.predLocks[userName] = state.predLocks[userName] || {};
   const now = new Date().toISOString();
-  for (const week of weeks) {
-    if (!state.predLocks[userName][week]) state.predLocks[userName][week] = now;
+  for (const matchId of matchIds) {
+    if (!state.predLocks[userName][matchId]) state.predLocks[userName][matchId] = now;
   }
 }
 
 function writeParticipantsTable(state) {
   const lines = [
-    "name\tphone\trole\tstatus\tpoints\tpredictions\tcorrect\twrong"
+    "name\tphone\trole\tstatus\tpoints\tpredictions\texact\toutcome\twrong"
   ];
   for (const user of state.users || []) {
     if (user.role === "viewer") continue;
@@ -339,6 +380,7 @@ function writeParticipantsTable(state) {
       stats.points,
       stats.total,
       stats.correct,
+      stats.outcome,
       stats.wrong
     ].map(value => String(value).replace(/\t/g, " ").replace(/\r?\n/g, " ")).join("\t"));
   }
@@ -346,13 +388,11 @@ function writeParticipantsTable(state) {
 }
 
 function writePredictionsTable(state) {
-  const lines = ["participant\tmatch_id\tweek\tmatch\tprediction_home\tprediction_away\tactual_home\tactual_away\tfinal\tresult"];
+  const lines = ["participant\tmatch_id\tweek\tmatch\tprediction_home\tprediction_away\tactual_home\tactual_away\tfinal\tresult\tpoints"];
   for (const [name, predictions] of Object.entries(state.pred || {})) {
     for (const [matchId, prediction] of Object.entries(predictions || {})) {
       const actual = state.actual?.[matchId] || {};
-      const result = actual.final
-        ? (Number(prediction.home) === Number(actual.home) && Number(prediction.away) === Number(actual.away) ? "correct" : "wrong")
-        : "waiting";
+      const score = predictionScore(prediction, actual);
       lines.push([
         name,
         matchId,
@@ -363,7 +403,8 @@ function writePredictionsTable(state) {
         actual.home ?? "",
         actual.away ?? "",
         actual.final ? "yes" : "no",
-        result
+        score.type,
+        score.points
       ].map(value => String(value).replace(/\t/g, " ").replace(/\r?\n/g, " ")).join("\t"));
     }
   }
@@ -375,7 +416,7 @@ function writeRankingTable(state) {
     .filter(user => user.role !== "admin" && user.role !== "viewer")
     .map(user => ({ ...user, ...participantStats(state, user.name) }))
     .sort((a, b) => b.points - a.points || b.correct - a.correct || String(a.name).localeCompare(String(b.name)));
-  const lines = ["rank\tparticipant\tphone\tstatus\tpoints\tpredictions\tcorrect\twrong"];
+  const lines = ["rank\tparticipant\tphone\tstatus\tpoints\tpredictions\texact\toutcome\twrong"];
   rows.forEach((row, index) => {
     lines.push([
       index + 1,
@@ -385,6 +426,7 @@ function writeRankingTable(state) {
       row.points,
       row.total,
       row.correct,
+      row.outcome,
       row.wrong
     ].map(value => String(value).replace(/\t/g, " ").replace(/\r?\n/g, " ")).join("\t"));
   });
