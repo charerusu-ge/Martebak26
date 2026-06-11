@@ -155,7 +155,7 @@ function recoverParticipantsFromActivityLog(state) {
     const byName = new Map((state.users || []).map(user => [String(user.name).toLowerCase(), user]));
     const fixedPasswords = new Map(fixedParticipantCredentials.map(item => [item.name.toLowerCase(), item.password]));
     fixedPasswords.set("odir", "P@ssw0rd.1");
-    const ignored = new Set(["codex-lock-test", "charled", "wizars"]);
+    const ignored = new Set(["codex-lock-test", "charled", "wizars", "espelho"]);
     const lines = fs.readFileSync(activityLogFile, "utf8").split(/\r?\n/);
     for (const line of lines) {
       const parts = line.split("\t");
