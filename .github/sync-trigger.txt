@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T22:32:00+07:00
-reason: mobile layout optimization for Martebak26
+sync requested at 2026-06-11T22:41:00+07:00
+reason: point rule wording update winner direction and draw outcome
