@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T22:41:00+07:00
-reason: point rule wording update winner direction and draw outcome
+sync requested at 2026-06-11T23:24:00+07:00
+reason: restore predictions and harden data json bom parsing
