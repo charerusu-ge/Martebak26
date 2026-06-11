@@ -1,2 +1,2 @@
-sync requested at 2026-06-11T09:26:00+07:00
-reason: prediction deadline week 1 changed to 23.59 WIB
+sync requested at 2026-06-11T21:10:00+07:00
+reason: participant restore and data recovery hardening
