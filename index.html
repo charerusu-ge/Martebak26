@@ -82,9 +82,9 @@
     const weekOpenMessage=w=>`Prediksi ${weeks.find(x=>x.id===w)?.name||"minggu ini"} baru terbuka pada ${new Date(weekOpenAt[w]).toLocaleString("id-ID")} WIB.`;
     const activePredictionWeek=()=>weeks.find(w=>weekOpen(w.id)&&allMatches().some(m=>m.week===w.id&&!matchLocked(m)))?.id||"w1";
     const canEditWeek=w=>state.user?.role==="admin"||weekOpen(w);
-    const registrationCloseAt=new Date("2026-06-11T22:00:00+07:00").getTime();
+    const registrationCloseAt=new Date("2026-06-11T23:00:00+07:00").getTime();
     const registrationClosed=()=>Date.now()>=registrationCloseAt;
-    const registrationInfo="Pendaftaran peserta baru ditutup pada 11 Juni 2026 pukul 22.00 WIB. Setelah waktu tersebut hanya peserta yang sudah terdaftar yang dapat login.";
+    const registrationInfo="Pendaftaran peserta baru ditutup pada 11 Juni 2026 pukul 23.00 WIB. Setelah waktu tersebut hanya peserta yang sudah terdaftar yang dapat login.";
     const firstKickoffAt=new Date("2026-06-11T20:00:00+07:00").getTime();
     let countdownTimer=null;
     const authHeaders=()=>state.token?{"Authorization":`Bearer ${state.token}`}:{};
