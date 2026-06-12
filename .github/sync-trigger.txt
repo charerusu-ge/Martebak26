@@ -1,2 +1,2 @@
-sync requested at 2026-06-12T11:45:00+07:00
-reason: fix prediction Save draft to ignore stale locked-match cache and lock only by per-match deadline
+sync requested at 2026-06-13T06:20:00+07:00
+reason: guard live score sync from accepting worldcup26 results before scheduled kickoff and clear false USA vs Paraguay final
