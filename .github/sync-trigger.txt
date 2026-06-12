@@ -1,2 +1,2 @@
-sync requested at 2026-06-12T07:20:00+07:00
-reason: switch score and match summary source to worldcup26.ir games endpoint
+sync requested at 2026-06-12T11:18:00+07:00
+reason: add participant account DikaFC and refresh ranking tables
