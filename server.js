@@ -302,14 +302,13 @@ function samePrediction(a, b) {
 }
 
 function hasLockedPredictionChange(state, userName, incomingPredictions) {
-  const locks = state.predLocks?.[userName] || {};
   const currentPredictions = state.pred?.[userName] || {};
   for (const [matchId, prediction] of Object.entries(incomingPredictions || {})) {
-    if (!locks[matchId] && !matchDeadlinePassed(state, matchId)) continue;
+    if (!matchDeadlinePassed(state, matchId)) continue;
     if (!samePrediction(currentPredictions[matchId], prediction)) return matchId;
   }
   for (const matchId of Object.keys(currentPredictions)) {
-    if ((locks[matchId] || matchDeadlinePassed(state, matchId)) && !(matchId in (incomingPredictions || {}))) return matchId;
+    if (matchDeadlinePassed(state, matchId) && !(matchId in (incomingPredictions || {}))) return matchId;
   }
   return "";
 }
