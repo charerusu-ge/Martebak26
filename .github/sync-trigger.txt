@@ -1,2 +1,2 @@
-sync requested at 2026-06-12T11:18:00+07:00
-reason: add participant account DikaFC and refresh ranking tables
+sync requested at 2026-06-12T11:45:00+07:00
+reason: fix prediction Save draft to ignore stale locked-match cache and lock only by per-match deadline
