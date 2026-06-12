@@ -1191,16 +1191,33 @@ function mergeLiveScores(state, synced) {
     const match = findScheduleMatch(state, item) || item;
     const id = match.id || item.id;
     if (!id) continue;
+    const kickoff = matchKickoffMs(match);
+    const beforeKickoff = kickoff && Date.now() < kickoff;
     if (item.actual) {
-      const next = { ...state.actual[id], ...item.actual, updatedAt: new Date().toISOString(), source: item.source || "worldcup26.ir" };
-      const prev = state.actual[id] || {};
-      if (prev.home !== next.home || prev.away !== next.away || prev.final !== next.final || prev.source !== next.source) {
-        state.actual[id] = next;
-        updated++;
+      if (beforeKickoff) {
+        if (state.actual[id]?.source === "worldcup26.ir") {
+          delete state.actual[id];
+          updated++;
+        }
+      } else {
+        const next = { ...state.actual[id], ...item.actual, updatedAt: new Date().toISOString(), source: item.source || "worldcup26.ir" };
+        const prev = state.actual[id] || {};
+        if (prev.home !== next.home || prev.away !== next.away || prev.final !== next.final || prev.source !== next.source) {
+          state.actual[id] = next;
+          updated++;
+        }
       }
     }
     if (item.summary) {
-      const nextSummary = { ...state.summary[id], ...item.summary, source: item.summary.source || item.source || "worldcup26.ir", updatedAt: new Date().toISOString() };
+      const incomingSummary = beforeKickoff
+        ? {
+            ...item.summary,
+            goals: [],
+            events: [],
+            stats: { ...(item.summary.stats || {}), status: "notstarted" }
+          }
+        : item.summary;
+      const nextSummary = { ...state.summary[id], ...incomingSummary, source: incomingSummary.source || item.source || "worldcup26.ir", updatedAt: new Date().toISOString() };
       const prevSummary = JSON.stringify(state.summary[id] || {});
       const nextText = JSON.stringify(nextSummary);
       if (prevSummary !== nextText) {
