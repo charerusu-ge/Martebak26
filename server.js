@@ -32,7 +32,7 @@ const maxLoginFailures = 3;
 const loginLockMs = 30 * 1000;
 const sessionIdleMs = 5 * 60 * 1000;
 const mediaIndonesiaScheduleUrl = process.env.MEDIA_INDONESIA_SCHEDULE_URL || "https://mediaindonesia.com/piala-dunia-2026/895180/jadwal-lengkap-piala-dunia-2026-wib-104-pertandingan-fase-grup-hingga-final";
-const liveScoreUrl = process.env.LIVESCORE_SYNC_URL || "https://www.livescore.com/en/football/international/world-cup-2026/";
+const liveScoreUrl = process.env.WORLDCUP26_GAMES_URL || "https://worldcup26.ir/get/games";
 const marketPredictionUrl = process.env.MARKET_PREDICTION_URL || "https://www.aiscore.com/world-cup";
 const aiScoreMarketSnapshot = [
   "12 / 06 - Mexico V South Africa Group A 1.44 4.33 7.50",
@@ -682,6 +682,100 @@ function normalizeSummaryCandidate(obj) {
   };
 }
 
+function cleanScorerText(value) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text || text.toLowerCase() === "null") return [];
+  return text
+    .replace(/[{}]/g, "")
+    .replace(/[“”]/g, '"')
+    .split(/"\s*,\s*"|,\s*/)
+    .map(item => item.replace(/^"+|"+$/g, "").trim())
+    .filter(Boolean);
+}
+
+function parseWorldCup26Scorers(value, team) {
+  return cleanScorerText(value).map(item => {
+    const minute = minuteText(item);
+    const player = item.replace(/\s+\d{1,3}(?:\+\d{1,2})?'?$/g, "").trim();
+    return {
+      minute,
+      type: "Goal",
+      player: player || item,
+      assist: "",
+      team,
+      score: ""
+    };
+  });
+}
+
+function parseWorldCup26DateToWib(value) {
+  const match = String(value || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (!match) return { date: "", time: "" };
+  const [, month, day, year, hour, minute] = match;
+  const localNorthAmerica = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  const wib = new Date(localNorthAmerica + 13 * 60 * 60 * 1000);
+  return {
+    date: `${wib.getUTCFullYear()}-${String(wib.getUTCMonth() + 1).padStart(2, "0")}-${String(wib.getUTCDate()).padStart(2, "0")}`,
+    time: `${String(wib.getUTCHours()).padStart(2, "0")}:${String(wib.getUTCMinutes()).padStart(2, "0")}`
+  };
+}
+
+function parseWorldCup26Games(text) {
+  const parsed = typeof text === "string" ? JSON.parse(text) : text;
+  const games = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.games) ? parsed.games : []);
+  return games.map(game => {
+    const matchNumber = Number(game.id || game.matchNumber || game.match_number || 0);
+    const id = matchNumber ? String(matchNumber).padStart(3, "0") : String(game._id || game.id || "");
+    const home = game.home_team_name_en || game.home_team_label || "";
+    const away = game.away_team_name_en || game.away_team_label || "";
+    const { date, time } = parseWorldCup26DateToWib(game.local_date);
+    const homeScore = scoreValue(game.home_score);
+    const awayScore = scoreValue(game.away_score);
+    const status = String(game.time_elapsed || game.status || "").toLowerCase();
+    const final = String(game.finished).toUpperCase() === "TRUE" || status === "finished" || status === "completed";
+    const live = String(game.finished).toUpperCase() !== "TRUE" && status && status !== "notstarted";
+    const goals = [
+      ...parseWorldCup26Scorers(game.home_scorers, home),
+      ...parseWorldCup26Scorers(game.away_scorers, away)
+    ];
+    const events = goals.length ? goals : [];
+    return {
+      id,
+      matchNumber: matchNumber || id,
+      week: weekForDate(date),
+      group: game.group ? `Grup ${game.group}` : (game.type || "FIFA"),
+      phase: game.type || game.group || "FIFA",
+      date,
+      time,
+      timezone: "WIB",
+      home,
+      away,
+      venue: game.stadium_id ? `Stadium ${game.stadium_id}` : "",
+      syncedAt: new Date().toISOString(),
+      source: "worldcup26.ir",
+      actual: homeScore !== "" && awayScore !== "" && (final || live || homeScore !== 0 || awayScore !== 0)
+        ? { home: homeScore, away: awayScore, final, live, status: status || (final ? "finished" : "notstarted") }
+        : null,
+      summary: {
+        source: "worldcup26.ir",
+        updatedAt: new Date().toISOString(),
+        goals,
+        events,
+        stats: {
+          status: status || (final ? "finished" : "notstarted"),
+          matchday: valueText(game.matchday),
+          type: valueText(game.type),
+          localDate: valueText(game.local_date),
+          persianDate: valueText(game.persian_date),
+          homeTeamId: valueText(game.home_team_id),
+          awayTeamId: valueText(game.away_team_id),
+          stadiumId: valueText(game.stadium_id)
+        }
+      }
+    };
+  }).filter(item => item.id && (item.home || item.away));
+}
+
 function scoreTextFromMarket(value) {
   const text = valueText(value);
   const match = text.match(/(\d{1,2})\s*[-:]\s*(\d{1,2})/);
@@ -1053,6 +1147,10 @@ function normTeam(value) {
   const aliases = {
     "south korea": "korea republic",
     "korea republic": "korea republic",
+    "czech republic": "czechia",
+    "czechia": "czechia",
+    "united states": "usa",
+    "usa": "usa",
     "bosnia and herzegovina": "bosnia herzegovina",
     "bosnia herzegovina": "bosnia herzegovina",
     "turkey": "turkiye",
@@ -1082,7 +1180,7 @@ function mergeLiveScores(state, synced) {
     const id = match.id || item.id;
     if (!id) continue;
     if (item.actual) {
-      const next = { ...state.actual[id], ...item.actual, updatedAt: new Date().toISOString(), source: "livescore" };
+      const next = { ...state.actual[id], ...item.actual, updatedAt: new Date().toISOString(), source: item.source || "worldcup26.ir" };
       const prev = state.actual[id] || {};
       if (prev.home !== next.home || prev.away !== next.away || prev.final !== next.final || prev.source !== next.source) {
         state.actual[id] = next;
@@ -1090,7 +1188,7 @@ function mergeLiveScores(state, synced) {
       }
     }
     if (item.summary) {
-      const nextSummary = { ...state.summary[id], ...item.summary, source: "livescore", updatedAt: new Date().toISOString() };
+      const nextSummary = { ...state.summary[id], ...item.summary, source: item.summary.source || item.source || "worldcup26.ir", updatedAt: new Date().toISOString() };
       const prevSummary = JSON.stringify(state.summary[id] || {});
       const nextText = JSON.stringify(nextSummary);
       if (prevSummary !== nextText) {
@@ -1191,15 +1289,15 @@ async function runLiveScoreRealtimeSync() {
   if (liveScoreStatus.running) return liveScoreStatus;
   liveScoreStatus = { ...liveScoreStatus, running: true, lastRun: new Date().toISOString(), lastError: null, updatedScores: 0 };
   try {
-    const synced = await fetchParsedMatches({ label: "livescore-results", url: liveScoreUrl });
+    const synced = await fetchParsedMatches({ label: "worldcup26-scores", url: liveScoreUrl, parser: parseWorldCup26Games });
     const state = readState();
     const updated = mergeLiveScores(state, synced);
     writeState(state);
     liveScoreStatus = { ...liveScoreStatus, running: false, lastOk: new Date().toISOString(), updatedScores: updated };
-    syncLog(`livescore-ok\tfound=${synced.length}\tupdatedScores=${updated}`);
+    syncLog(`worldcup26-ok\tfound=${synced.length}\tupdatedScores=${updated}`);
   } catch (error) {
     liveScoreStatus = { ...liveScoreStatus, running: false, lastError: error.message || String(error) };
-    syncLog(`livescore-error\t${liveScoreStatus.lastError}`);
+    syncLog(`worldcup26-error\t${liveScoreStatus.lastError}`);
   }
   return liveScoreStatus;
 }
@@ -1211,14 +1309,14 @@ async function runFifaSync() {
     const state = readState();
     const sources = [
       { label: "mediaindonesia-schedule", url: mediaIndonesiaScheduleUrl, parser: parseMediaIndonesiaSchedule },
-      { label: "livescore-results", url: liveScoreUrl }
+      { label: "worldcup26-scores", url: liveScoreUrl, parser: parseWorldCup26Games }
     ];
     let totalUpdated = 0;
     const sourceResults = [];
     for (const source of sources) {
       try {
         const synced = await fetchParsedMatches(source);
-        const updated = source.label === "livescore-results"
+        const updated = source.label === "worldcup26-scores"
           ? mergeLiveScores(state, synced)
           : mergeSyncedMatches(state, synced);
         totalUpdated += updated;
@@ -1372,7 +1470,7 @@ const server = http.createServer((req, res) => {
     const matchId = String(url.searchParams.get("matchId") || "").trim();
     if (!matchId) return send(res, 400, JSON.stringify({ error: "matchId wajib diisi" }), "application/json; charset=utf-8");
     const match = (state.schedule || []).find(item => String(item.id) === matchId);
-    const summary = state.summary?.[matchId] || { source: "livescore", updatedAt: null, goals: [], events: [], stats: {} };
+    const summary = state.summary?.[matchId] || { source: "worldcup26.ir", updatedAt: null, goals: [], events: [], stats: {} };
     activityLog(req, "match-summary-read", { user: user.name, role: user.role || "participant", matchId });
     return send(res, 200, req.method === "HEAD" ? "" : JSON.stringify({ matchId, match, summary }), "application/json; charset=utf-8");
   }
