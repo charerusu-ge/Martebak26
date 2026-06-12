@@ -313,6 +313,19 @@ function hasLockedPredictionChange(state, userName, incomingPredictions) {
   return "";
 }
 
+function mergeDraftPredictions(state, userName, incomingPredictions) {
+  const currentPredictions = state.pred?.[userName] || {};
+  const nextPredictions = { ...currentPredictions };
+  for (const [matchId, prediction] of Object.entries(incomingPredictions || {})) {
+    if (matchDeadlinePassed(state, matchId)) {
+      if (currentPredictions[matchId]) nextPredictions[matchId] = currentPredictions[matchId];
+      continue;
+    }
+    nextPredictions[matchId] = prediction;
+  }
+  return nextPredictions;
+}
+
 function changedPredictionWeeks(state, userName, incomingPredictions) {
   const currentPredictions = state.pred?.[userName] || {};
   const weeks = new Set();
@@ -1629,12 +1642,8 @@ const server = http.createServer((req, res) => {
             activityLog(req, "prediction-save-before-week-open", { user: user.name, week: notOpenWeek });
             return send(res, 403, JSON.stringify({ error: "Prediksi minggu ini belum terbuka. Periode setelah minggu 1 baru dapat diisi 1 hari sebelum periode tersebut." }), "application/json; charset=utf-8");
           }
-          const lockedMatchId = hasLockedPredictionChange(currentState, user.name, userPredictions);
-          if (lockedMatchId) {
-            activityLog(req, "prediction-change-denied-locked", { user: user.name, matchId: lockedMatchId });
-            return send(res, 403, JSON.stringify({ error: "Prediksi pertandingan ini sudah terkunci dan tidak dapat dirubah kembali." }), "application/json; charset=utf-8");
-          }
-          data.pred = { ...currentState.pred, [user.name]: userPredictions };
+          const mergedPredictions = mergeDraftPredictions(currentState, user.name, userPredictions);
+          data.pred = { ...currentState.pred, [user.name]: mergedPredictions };
           data.predLocks = currentState.predLocks || {};
           data.schedule = undefined;
           data.actual = undefined;
@@ -1647,7 +1656,7 @@ const server = http.createServer((req, res) => {
           data.online = currentState.online;
           activityLog(req, "prediction-draft-save", {
             user: user.name,
-            predictionCount: Object.keys(userPredictions).length,
+            predictionCount: Object.keys(mergedPredictions).length,
             locked: false
           });
         } else {
