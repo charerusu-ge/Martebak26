@@ -1,2 +1,2 @@
-sync requested at 2026-06-13T06:20:00+07:00
-reason: guard live score sync from accepting worldcup26 results before scheduled kickoff and clear false USA vs Paraguay final
+sync requested at 2026-06-13T15:25:00+07:00
+reason: use worldcup26 games teams stadiums groups for schedule flags and country standings page
