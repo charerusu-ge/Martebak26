@@ -1,2 +1,2 @@
-sync requested at 2026-06-13T15:36:00+07:00
-reason: sort schedule by WIB kickoff time instead of match number
+sync requested at 2026-06-13T15:47:00+07:00
+reason: explicitly sort prediction week matches by WIB kickoff time
