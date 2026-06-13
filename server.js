@@ -31,8 +31,10 @@ const sessions = new Map();
 const maxLoginFailures = 3;
 const loginLockMs = 30 * 1000;
 const sessionIdleMs = 5 * 60 * 1000;
-const mediaIndonesiaScheduleUrl = process.env.MEDIA_INDONESIA_SCHEDULE_URL || "https://mediaindonesia.com/piala-dunia-2026/895180/jadwal-lengkap-piala-dunia-2026-wib-104-pertandingan-fase-grup-hingga-final";
 const liveScoreUrl = process.env.WORLDCUP26_GAMES_URL || "https://worldcup26.ir/get/games";
+const worldCup26TeamsUrl = process.env.WORLDCUP26_TEAMS_URL || "https://worldcup26.ir/get/teams";
+const worldCup26StadiumsUrl = process.env.WORLDCUP26_STADIUMS_URL || "https://worldcup26.ir/get/stadiums";
+const worldCup26GroupsUrl = process.env.WORLDCUP26_GROUPS_URL || "https://worldcup26.ir/get/groups";
 const marketPredictionUrl = process.env.MARKET_PREDICTION_URL || "https://www.aiscore.com/world-cup";
 const aiScoreMarketSnapshot = [
   "12 / 06 - Mexico V South Africa Group A 1.44 4.33 7.50",
@@ -48,7 +50,7 @@ const aiScoreMarketSnapshot = [
 ].join(" ");
 const syncIntervalMs = Number(process.env.FIFA_SYNC_INTERVAL_MS || 30 * 60 * 1000);
 const liveScoreRealtimeIntervalMs = Number(process.env.LIVESCORE_REALTIME_INTERVAL_MS || 60 * 1000);
-let syncStatus = { running: false, lastRun: null, lastOk: null, lastError: null, updatedMatches: 0, sources: { schedule: mediaIndonesiaScheduleUrl, scores: liveScoreUrl }, sourceResults: [] };
+let syncStatus = { running: false, lastRun: null, lastOk: null, lastError: null, updatedMatches: 0, sources: { schedule: liveScoreUrl, teams: worldCup26TeamsUrl, stadiums: worldCup26StadiumsUrl, groups: worldCup26GroupsUrl, scores: liveScoreUrl }, sourceResults: [] };
 let liveScoreStatus = { running: false, lastRun: null, lastOk: null, lastError: null, updatedScores: 0, source: liveScoreUrl };
 let marketPredictionStatus = { running: false, lastRun: null, lastOk: null, lastError: null, updated: 0, found: 0, source: marketPredictionUrl };
 const predictionOpenAt = new Date("2026-06-11T09:00:00+07:00").getTime();
@@ -91,7 +93,7 @@ function send(res, status, body, contentType = "text/plain; charset=utf-8") {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://flagcdn.com https://*.flagcdn.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   });
   res.end(body);
 }
@@ -192,6 +194,9 @@ function ensureState(data) {
     actual: data.actual || {},
     summary: data.summary || {},
     marketPrediction: data.marketPrediction || {},
+    teamMeta: data.teamMeta || {},
+    stadiumMeta: data.stadiumMeta || {},
+    groupStandings: data.groupStandings || {},
     notif: Array.isArray(data.notif) ? data.notif : [],
     telegram: data.telegram || {},
     messages: Array.isArray(data.messages) ? data.messages : [],
@@ -732,15 +737,107 @@ function parseWorldCup26DateToWib(value) {
   };
 }
 
-function parseWorldCup26Games(text) {
+function stadiumUtcOffsetHours(stadium = {}) {
+  const country = String(stadium.country_en || stadium.country || "").toLowerCase();
+  const region = String(stadium.region || "").toLowerCase();
+  if (country.includes("mexico")) return -6;
+  if (region.includes("eastern")) return -4;
+  if (region.includes("central")) return -5;
+  if (region.includes("western")) return -7;
+  return -6;
+}
+
+function parseWorldCup26DateToWibWithStadium(value, stadium = {}) {
+  const match = String(value || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (!match) return { date: "", time: "" };
+  const [, month, day, year, hour, minute] = match;
+  const offset = stadiumUtcOffsetHours(stadium);
+  const utc = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - offset, Number(minute));
+  const wib = new Date(utc + 7 * 60 * 60 * 1000);
+  return {
+    date: `${wib.getUTCFullYear()}-${String(wib.getUTCMonth() + 1).padStart(2, "0")}-${String(wib.getUTCDate()).padStart(2, "0")}`,
+    time: `${String(wib.getUTCHours()).padStart(2, "0")}:${String(wib.getUTCMinutes()).padStart(2, "0")}`
+  };
+}
+
+function normalizeWorldCup26Teams(data) {
+  const teams = Array.isArray(data) ? data : (Array.isArray(data?.teams) ? data.teams : []);
+  const byId = {};
+  const byName = {};
+  for (const team of teams) {
+    const item = {
+      id: String(team.id || ""),
+      name: valueText(team.name_en),
+      nameFa: valueText(team.name_fa),
+      flag: valueText(team.flag),
+      fifaCode: valueText(team.fifa_code),
+      iso2: valueText(team.iso2),
+      group: valueText(team.groups)
+    };
+    if (item.id) byId[item.id] = item;
+    if (item.name) byName[normTeam(item.name)] = item;
+  }
+  return { byId, byName };
+}
+
+function normalizeWorldCup26Stadiums(data) {
+  const stadiums = Array.isArray(data) ? data : (Array.isArray(data?.stadiums) ? data.stadiums : []);
+  const byId = {};
+  for (const stadium of stadiums) {
+    const item = {
+      id: String(stadium.id || ""),
+      name: valueText(stadium.name_en),
+      fifaName: valueText(stadium.fifa_name),
+      city: valueText(stadium.city_en),
+      country: valueText(stadium.country_en),
+      capacity: stadium.capacity || "",
+      region: valueText(stadium.region),
+      utcOffset: stadiumUtcOffsetHours(stadium)
+    };
+    if (item.id) byId[item.id] = item;
+  }
+  return { byId };
+}
+
+function parseWorldCup26Groups(data, teamsMeta = {}) {
+  const groups = Array.isArray(data) ? data : (Array.isArray(data?.groups) ? data.groups : []);
+  const out = {};
+  for (const group of groups) {
+    const name = valueText(group.name);
+    if (!name) continue;
+    out[name] = (group.teams || []).map(row => {
+      const team = teamsMeta.byId?.[String(row.team_id)] || {};
+      return {
+        teamId: String(row.team_id || ""),
+        name: team.name || "",
+        flag: team.flag || "",
+        fifaCode: team.fifaCode || "",
+        mp: Number(row.mp || 0),
+        w: Number(row.w || 0),
+        d: Number(row.d || 0),
+        l: Number(row.l || 0),
+        pts: Number(row.pts || 0),
+        gf: Number(row.gf || 0),
+        ga: Number(row.ga || 0),
+        gd: Number(row.gd || 0)
+      };
+    }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || String(a.name).localeCompare(String(b.name)));
+  }
+  return out;
+}
+
+function parseWorldCup26Games(text, context = {}) {
   const parsed = typeof text === "string" ? JSON.parse(text) : text;
   const games = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.games) ? parsed.games : []);
   return games.map(game => {
     const matchNumber = Number(game.id || game.matchNumber || game.match_number || 0);
     const id = matchNumber ? String(matchNumber).padStart(3, "0") : String(game._id || game.id || "");
-    const home = game.home_team_name_en || game.home_team_label || "";
-    const away = game.away_team_name_en || game.away_team_label || "";
-    const { date, time } = parseWorldCup26DateToWib(game.local_date);
+    const homeTeam = context.teams?.byId?.[String(game.home_team_id)] || {};
+    const awayTeam = context.teams?.byId?.[String(game.away_team_id)] || {};
+    const stadium = context.stadiums?.byId?.[String(game.stadium_id)] || {};
+    const home = homeTeam.name || game.home_team_name_en || game.home_team_label || "";
+    const away = awayTeam.name || game.away_team_name_en || game.away_team_label || "";
+    const { date, time } = context.stadiums ? parseWorldCup26DateToWibWithStadium(game.local_date, stadium) : parseWorldCup26DateToWib(game.local_date);
     const homeScore = scoreValue(game.home_score);
     const awayScore = scoreValue(game.away_score);
     const status = String(game.time_elapsed || game.status || "").toLowerCase();
@@ -762,7 +859,15 @@ function parseWorldCup26Games(text) {
       timezone: "WIB",
       home,
       away,
-      venue: game.stadium_id ? `Stadium ${game.stadium_id}` : "",
+      homeTeamId: valueText(game.home_team_id),
+      awayTeamId: valueText(game.away_team_id),
+      homeFlag: homeTeam.flag || "",
+      awayFlag: awayTeam.flag || "",
+      venue: stadium.fifaName || stadium.name || (game.stadium_id ? `Stadium ${game.stadium_id}` : ""),
+      stadiumId: valueText(game.stadium_id),
+      stadiumName: stadium.name || "",
+      city: stadium.city || "",
+      country: stadium.country || "",
       syncedAt: new Date().toISOString(),
       source: "worldcup26.ir",
       actual: homeScore !== "" && awayScore !== "" && (final || live || homeScore !== 0 || awayScore !== 0)
@@ -1174,6 +1279,8 @@ function normTeam(value) {
 }
 
 function findScheduleMatch(state, item) {
+  const byId = (state.schedule || []).find(match => String(match.id) === String(item.id));
+  if (byId) return byId;
   const wantedHome = normTeam(item.home);
   const wantedAway = normTeam(item.away);
   const date = item.date || "";
@@ -1314,6 +1421,35 @@ async function fetchParsedMatches(source) {
     .filter((item, index, arr) => arr.findIndex(other => other.id === item.id) === index);
 }
 
+async function fetchWorldCup26Json(label, url) {
+  const response = await fetch(url, {
+    redirect: "follow",
+    headers: {
+      "User-Agent": "Mozilla/5.0 Martebak26/1.0",
+      "Accept": "application/json,text/plain;q=0.9,*/*;q=0.8"
+    }
+  });
+  if (!response.ok) throw new Error(`${label} returned ${response.status}`);
+  return response.json();
+}
+
+async function fetchWorldCup26Bundle() {
+  const [games, teams, stadiums, groups] = await Promise.all([
+    fetchWorldCup26Json("worldcup26-games", liveScoreUrl),
+    fetchWorldCup26Json("worldcup26-teams", worldCup26TeamsUrl),
+    fetchWorldCup26Json("worldcup26-stadiums", worldCup26StadiumsUrl),
+    fetchWorldCup26Json("worldcup26-groups", worldCup26GroupsUrl)
+  ]);
+  const teamMeta = normalizeWorldCup26Teams(teams);
+  const stadiumMeta = normalizeWorldCup26Stadiums(stadiums);
+  return {
+    matches: parseWorldCup26Games(games, { teams: teamMeta, stadiums: stadiumMeta }),
+    teamMeta,
+    stadiumMeta,
+    groupStandings: parseWorldCup26Groups(groups, teamMeta)
+  };
+}
+
 async function runLiveScoreRealtimeSync() {
   if (liveScoreStatus.running) return liveScoreStatus;
   liveScoreStatus = { ...liveScoreStatus, running: true, lastRun: new Date().toISOString(), lastError: null, updatedScores: 0 };
@@ -1336,26 +1472,21 @@ async function runFifaSync() {
   syncStatus = { ...syncStatus, running: true, lastRun: new Date().toISOString(), lastError: null, updatedMatches: 0, sourceResults: [] };
   try {
     const state = readState();
-    const sources = [
-      { label: "mediaindonesia-schedule", url: mediaIndonesiaScheduleUrl, parser: parseMediaIndonesiaSchedule },
-      { label: "worldcup26-scores", url: liveScoreUrl, parser: parseWorldCup26Games }
+    const bundle = await fetchWorldCup26Bundle();
+    state.teamMeta = bundle.teamMeta;
+    state.stadiumMeta = bundle.stadiumMeta;
+    state.groupStandings = bundle.groupStandings;
+    const scheduleUpdated = mergeSyncedMatches(state, bundle.matches.map(({ actual, summary, ...match }) => match));
+    const scoreUpdated = mergeLiveScores(state, bundle.matches);
+    const totalUpdated = scheduleUpdated + scoreUpdated;
+    const sourceResults = [
+      { label: "worldcup26-schedule", ok: true, found: bundle.matches.length, updated: scheduleUpdated },
+      { label: "worldcup26-scores", ok: true, found: bundle.matches.length, updated: scoreUpdated },
+      { label: "worldcup26-teams", ok: true, found: Object.keys(bundle.teamMeta.byId || {}).length, updated: Object.keys(bundle.teamMeta.byId || {}).length },
+      { label: "worldcup26-stadiums", ok: true, found: Object.keys(bundle.stadiumMeta.byId || {}).length, updated: Object.keys(bundle.stadiumMeta.byId || {}).length },
+      { label: "worldcup26-groups", ok: true, found: Object.keys(bundle.groupStandings || {}).length, updated: Object.keys(bundle.groupStandings || {}).length }
     ];
-    let totalUpdated = 0;
-    const sourceResults = [];
-    for (const source of sources) {
-      try {
-        const synced = await fetchParsedMatches(source);
-        const updated = source.label === "worldcup26-scores"
-          ? mergeLiveScores(state, synced)
-          : mergeSyncedMatches(state, synced);
-        totalUpdated += updated;
-        sourceResults.push({ label: source.label, ok: true, found: synced.length, updated });
-        syncLog(`source-ok\t${source.label}\tfound=${synced.length}\tupdated=${updated}`);
-      } catch (error) {
-        sourceResults.push({ label: source.label, ok: false, error: error.message || String(error) });
-        syncLog(`source-error\t${source.label}\t${error.message || String(error)}`);
-      }
-    }
+    sourceResults.forEach(result => syncLog(`source-ok\t${result.label}\tfound=${result.found}\tupdated=${result.updated}`));
     writeState(state);
     syncStatus = { ...syncStatus, running: false, lastOk: new Date().toISOString(), updatedMatches: totalUpdated, sourceResults };
     syncLog(`ok\ttotalUpdated=${totalUpdated}`);
@@ -1429,6 +1560,9 @@ function mergeState(incoming) {
     actual: incoming.actual || current.actual,
     summary: incoming.summary || current.summary,
     marketPrediction: incoming.marketPrediction || current.marketPrediction,
+    teamMeta: incoming.teamMeta || current.teamMeta,
+    stadiumMeta: incoming.stadiumMeta || current.stadiumMeta,
+    groupStandings: incoming.groupStandings || current.groupStandings,
     notif: Array.isArray(incoming.notif) ? incoming.notif : current.notif,
     telegram: incoming.telegram || current.telegram,
     messages: Array.isArray(incoming.messages) ? incoming.messages : current.messages,
