@@ -1,2 +1,2 @@
-sync requested at 2026-06-13T15:25:00+07:00
-reason: use worldcup26 games teams stadiums groups for schedule flags and country standings page
+sync requested at 2026-06-13T15:36:00+07:00
+reason: sort schedule by WIB kickoff time instead of match number
