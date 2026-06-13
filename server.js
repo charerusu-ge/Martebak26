@@ -291,6 +291,15 @@ function matchKickoffMs(match) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function compareMatchesByKickoff(a, b) {
+  const ka = matchKickoffMs(a);
+  const kb = matchKickoffMs(b);
+  if (ka && kb && ka !== kb) return ka - kb;
+  if (ka && !kb) return -1;
+  if (!ka && kb) return 1;
+  return Number(a.matchNumber || a.id || 0) - Number(b.matchNumber || b.id || 0);
+}
+
 function matchDeadlinePassed(state, matchId) {
   const kickoff = matchKickoffMs(matchById(state, matchId));
   return kickoff ? Date.now() > kickoff - 60 * 60 * 1000 : false;
@@ -1250,7 +1259,7 @@ function mergeSyncedMatches(state, synced) {
     updated++;
   }
   state.schedule = schedule;
-  state.schedule.sort((a, b) => Number(a.matchNumber || a.id) - Number(b.matchNumber || b.id));
+  state.schedule.sort(compareMatchesByKickoff);
   return updated;
 }
 
