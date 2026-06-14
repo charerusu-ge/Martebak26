@@ -1,2 +1,2 @@
-sync requested at 2026-06-13T16:18:00+07:00
-reason: remove Road to Kickoff World Cup countdown hero from homepage login
+sync requested at 2026-06-14T14:20:00+07:00
+reason: harden participant API response and validate prediction payloads
