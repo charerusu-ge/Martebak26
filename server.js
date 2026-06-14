@@ -222,12 +222,55 @@ function ensureState(data) {
   return state;
 }
 
-function publicState(state) {
+function publicUser(user, viewer) {
+  const { password, ...safeUser } = user;
+  if (!viewer || viewer.role === "admin" || String(viewer.name).toLowerCase() === String(user.name).toLowerCase()) {
+    return safeUser;
+  }
+  const { phone, ...limitedUser } = safeUser;
+  return limitedUser;
+}
+
+function publicPredictions(state, viewer) {
+  if (viewer?.role === "admin") return state.pred || {};
+  const result = {};
+  const viewerName = String(viewer?.name || "");
+  for (const [name, predictions] of Object.entries(state.pred || {})) {
+    const visiblePredictions = {};
+    for (const [matchId, prediction] of Object.entries(predictions || {})) {
+      if (String(name).toLowerCase() === viewerName.toLowerCase() || matchDeadlinePassed(state, matchId)) {
+        visiblePredictions[matchId] = prediction;
+      }
+    }
+    if (Object.keys(visiblePredictions).length) result[name] = visiblePredictions;
+  }
+  return result;
+}
+
+function publicPredictionLocks(state, viewer) {
+  if (viewer?.role === "admin") return state.predLocks || {};
+  const result = {};
+  const viewerName = String(viewer?.name || "");
+  for (const [name, locks] of Object.entries(state.predLocks || {})) {
+    const visibleLocks = {};
+    for (const [matchId, lockedAt] of Object.entries(locks || {})) {
+      if (String(name).toLowerCase() === viewerName.toLowerCase() || matchDeadlinePassed(state, matchId)) {
+        visibleLocks[matchId] = lockedAt;
+      }
+    }
+    if (Object.keys(visibleLocks).length) result[name] = visibleLocks;
+  }
+  return result;
+}
+
+function publicState(state, viewer = null) {
   const now = Date.now();
   const { telegram, loginSecurity, ...safeState } = state;
   return {
     ...safeState,
-    users: state.users.map(({ password, ...user }) => user),
+    users: state.users.map(user => publicUser(user, viewer)),
+    pred: publicPredictions(state, viewer),
+    predLocks: publicPredictionLocks(state, viewer),
     messages: (state.messages || []).filter(message => !message.expiresAt || new Date(message.expiresAt).getTime() > now),
     online: Object.fromEntries(Object.entries(state.online || {}).filter(([, rec]) => now - new Date(rec.lastSeen || 0).getTime() <= 90_000))
   };
@@ -303,6 +346,27 @@ function compareMatchesByKickoff(a, b) {
 function matchDeadlinePassed(state, matchId) {
   const kickoff = matchKickoffMs(matchById(state, matchId));
   return kickoff ? Date.now() > kickoff - 60 * 60 * 1000 : false;
+}
+
+function validateParticipantPredictions(state, predictions) {
+  const validMatchIds = new Set((state.schedule || []).map(match => String(match.id)));
+  const clean = {};
+  const errors = [];
+  for (const [matchId, prediction] of Object.entries(predictions || {})) {
+    const id = String(matchId);
+    if (!validMatchIds.has(id)) {
+      errors.push(`Match ID tidak dikenal: ${id}`);
+      continue;
+    }
+    const home = Number(prediction?.home);
+    const away = Number(prediction?.away);
+    if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0 || home > 99 || away > 99) {
+      errors.push(`Skor tidak valid untuk match ${id}`);
+      continue;
+    }
+    clean[id] = { home, away };
+  }
+  return { clean, errors };
 }
 
 function predictionWeeks(state, predictions) {
@@ -1679,7 +1743,7 @@ const server = http.createServer((req, res) => {
     state.online = state.online || {};
     state.online[user.name] = { role: user.role || "participant", lastSeen: new Date().toISOString() };
     writeState(state);
-    const pub = publicState(readState());
+    const pub = publicState(readState(), user);
     return send(res, 200, JSON.stringify({ ok: true, online: pub.online, messages: pub.messages }), "application/json; charset=utf-8");
   }
 
@@ -1710,7 +1774,7 @@ const server = http.createServer((req, res) => {
       state.messages = state.messages.slice(0, 12);
       writeState(state);
       activityLog(req, "message-created", { user: user.name });
-      return send(res, 200, JSON.stringify({ ok: true, messages: publicState(readState()).messages }), "application/json; charset=utf-8");
+      return send(res, 200, JSON.stringify({ ok: true, messages: publicState(readState(), user).messages }), "application/json; charset=utf-8");
     });
   }
 
@@ -1766,7 +1830,7 @@ const server = http.createServer((req, res) => {
       const token = crypto.randomBytes(32).toString("hex");
       sessions.set(token, { name: user.name, createdAt: Date.now(), lastActivity: Date.now() });
       activityLog(req, "login-success", { name: user.name, phone: user.phone || "", role: user.role || "participant" });
-      return send(res, 200, JSON.stringify({ token, user: safeUser, state: publicState(readState()) }), "application/json; charset=utf-8");
+      return send(res, 200, JSON.stringify({ token, user: safeUser, state: publicState(readState(), user) }), "application/json; charset=utf-8");
     });
   }
 
@@ -1778,7 +1842,7 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === "GET" || req.method === "HEAD") {
       activityLog(req, "state-read", { user: user.name, role: user.role || "participant" });
-      return send(res, 200, req.method === "HEAD" ? "" : JSON.stringify(publicState(readState())), "application/json; charset=utf-8");
+      return send(res, 200, req.method === "HEAD" ? "" : JSON.stringify(publicState(readState(), user)), "application/json; charset=utf-8");
     }
     if (req.method === "POST") {
       return readJsonBody(req, (error, data) => {
@@ -1796,7 +1860,12 @@ const server = http.createServer((req, res) => {
             activityLog(req, "prediction-save-before-open", { user: user.name });
             return send(res, 403, JSON.stringify({ error: "Prediksi baru dapat disimpan mulai 11 Juni 2026 pukul 09.00 WIB." }), "application/json; charset=utf-8");
           }
-          const userPredictions = data.pred?.[user.name] || {};
+          const submittedPredictions = data.pred?.[user.name] || {};
+          const { clean: userPredictions, errors: predictionErrors } = validateParticipantPredictions(currentState, submittedPredictions);
+          if (predictionErrors.length) {
+            activityLog(req, "prediction-invalid-payload", { user: user.name, errors: predictionErrors.slice(0, 5) });
+            return send(res, 400, JSON.stringify({ error: "Payload prediksi tidak valid.", details: predictionErrors.slice(0, 5) }), "application/json; charset=utf-8");
+          }
           const notOpenWeek = changedPredictionWeeks(currentState, user.name, userPredictions).find(week => !weekOpen(week));
           if (notOpenWeek) {
             activityLog(req, "prediction-save-before-week-open", { user: user.name, week: notOpenWeek });
