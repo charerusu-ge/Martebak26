@@ -80,7 +80,7 @@ const types = {
   ".ico": "image/x-icon"
 };
 
-function send(res, status, body, contentType = "text/plain; charset=utf-8") {
+function send(res, status, body, contentType = "text/plain; charset=utf-8", extraHeaders = {}) {
   const isHtml = contentType.startsWith("text/html");
   const isJson = contentType.startsWith("application/json");
   res.writeHead(status, {
@@ -93,9 +93,45 @@ function send(res, status, body, contentType = "text/plain; charset=utf-8") {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://flagcdn.com https://*.flagcdn.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://flagcdn.com https://*.flagcdn.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+    ...extraHeaders
   });
   res.end(body);
+}
+
+function parseCookies(req) {
+  return Object.fromEntries(String(req.headers.cookie || "").split(";").map(part => {
+    const index = part.indexOf("=");
+    if (index < 0) return null;
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (!key) return null;
+    return [key, decodeURIComponent(value)];
+  }).filter(Boolean));
+}
+
+function isLocalRequest(req) {
+  const host = String(req.headers.host || "").toLowerCase().split(":")[0];
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
+function isHttpsRequest(req) {
+  return String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https" || !isLocalRequest(req);
+}
+
+function sessionCookie(req, token, maxAge = null) {
+  const parts = [
+    `m26_session=${encodeURIComponent(token || "")}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Strict"
+  ];
+  if (isHttpsRequest(req)) parts.push("Secure");
+  if (Number.isFinite(maxAge)) {
+    if (maxAge <= 0) parts.push("Max-Age=0");
+    else parts.push(`Max-Age=${Math.ceil(maxAge / 1000)}`);
+  }
+  return parts.join("; ");
 }
 
 function resolveFile(urlPath) {
@@ -1572,7 +1608,8 @@ async function runFifaSync() {
 
 function authUser(req) {
   const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : req.headers["x-session-token"];
+  const cookies = parseCookies(req);
+  const token = header.startsWith("Bearer ") ? header.slice(7) : (req.headers["x-session-token"] || cookies.m26_session);
   if (!token) return null;
   const session = sessions.get(token);
   if (!session) return null;
@@ -1778,6 +1815,17 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  if (req.url?.startsWith("/api/logout") && req.method === "POST") {
+    const header = req.headers.authorization || "";
+    const cookies = parseCookies(req);
+    const token = header.startsWith("Bearer ") ? header.slice(7) : (req.headers["x-session-token"] || cookies.m26_session);
+    if (token) sessions.delete(token);
+    activityLog(req, "logout", {});
+    return send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8", {
+      "Set-Cookie": sessionCookie(req, "", 0)
+    });
+  }
+
   if (req.url?.startsWith("/api/login") && req.method === "POST") {
     return readJsonBody(req, (error, body) => {
       if (error) {
@@ -1830,7 +1878,9 @@ const server = http.createServer((req, res) => {
       const token = crypto.randomBytes(32).toString("hex");
       sessions.set(token, { name: user.name, createdAt: Date.now(), lastActivity: Date.now() });
       activityLog(req, "login-success", { name: user.name, phone: user.phone || "", role: user.role || "participant" });
-      return send(res, 200, JSON.stringify({ token, user: safeUser, state: publicState(readState(), user) }), "application/json; charset=utf-8");
+      return send(res, 200, JSON.stringify({ user: safeUser, state: publicState(readState(), user) }), "application/json; charset=utf-8", {
+        "Set-Cookie": sessionCookie(req, token)
+      });
     });
   }
 
