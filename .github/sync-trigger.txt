@@ -1,2 +1,2 @@
-sync requested at 2026-06-14T14:45:00+07:00
-reason: move inline assets to external files and use HttpOnly SameSite session cookie
+sync requested at 2026-06-15T16:55:00+07:00
+reason: add H-2 match lineup sync scaffolding, table, admin button, and schedule display
