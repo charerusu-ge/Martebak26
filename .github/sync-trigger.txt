@@ -1,2 +1,2 @@
-sync requested at 2026-06-15T16:55:00+07:00
-reason: add H-2 match lineup sync scaffolding, table, admin button, and schedule display
+sync requested at 2026-06-15T17:15:00+07:00
+reason: add API-Football fixtures lineups and squad fallback for match lineups
