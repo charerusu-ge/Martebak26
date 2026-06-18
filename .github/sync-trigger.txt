@@ -1,2 +1,2 @@
-sync requested at 2026-06-18T17:13:05+07:00
-reason: add booster point checkbox and scoring rules
+sync requested at 2026-06-18T17:25:00+07:00
+reason: lock booster point for final and past matches
