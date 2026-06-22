@@ -1,2 +1,2 @@
-sync requested at 2026-06-22T22:48:00+07:00
-reason: add login popup leaderboard bar chart excluding zero points
+sync requested at 2026-06-22T22:58:00+07:00
+reason: fix login leaderboard popup ranking by actual total points
