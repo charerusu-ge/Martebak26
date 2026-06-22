@@ -1,2 +1,2 @@
-sync requested at 2026-06-22T22:20:00+07:00
-reason: harden auth with password hashing, audit logs, login rate limit, backups, robots, watchdog
+sync requested at 2026-06-22T22:35:00+07:00
+reason: add login captcha challenge validation
