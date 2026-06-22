@@ -1,2 +1,2 @@
-sync requested at 2026-06-22T21:53:42+07:00
-reason: add scanner path blocking and IP rate limit
+sync requested at 2026-06-22T22:20:00+07:00
+reason: harden auth with password hashing, audit logs, login rate limit, backups, robots, watchdog
