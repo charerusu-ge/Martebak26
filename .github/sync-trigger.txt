@@ -1,2 +1,2 @@
-sync requested at 2026-06-18T17:25:00+07:00
-reason: lock booster point for final and past matches
+sync requested at 2026-06-22T21:53:42+07:00
+reason: add scanner path blocking and IP rate limit
