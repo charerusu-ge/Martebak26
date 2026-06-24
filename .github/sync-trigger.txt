@@ -1,2 +1,2 @@
-sync requested at 2026-06-22T22:58:00+07:00
-reason: fix login leaderboard popup ranking by actual total points
+sync requested at 2026-06-24T07:25:00+07:00
+reason: open week 3 predictions and use server leaderboard for login popup
