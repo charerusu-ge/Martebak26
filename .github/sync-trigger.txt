@@ -1,2 +1,2 @@
-sync requested at 2026-06-27T14:18:00+07:00
-reason: update downtime compensation so every participant receives +1 for each match on 2026-06-25 and 2026-06-26, replacing missing-only bonus rule
+sync requested at 2026-06-27T14:31:00+07:00
+reason: keep +1 downtime bonus for all participants on 2026-06-25 and 2026-06-26, exclude normal prediction points for those matches from ranking
