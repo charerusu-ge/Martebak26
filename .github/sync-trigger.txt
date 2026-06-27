@@ -1,2 +1,2 @@
-sync requested at 2026-06-26T17:25:00+07:00
-reason: align login leaderboard popup and klasemen to same server leaderboard source, cache-bust app assets
+sync requested at 2026-06-27T14:18:00+07:00
+reason: update downtime compensation so every participant receives +1 for each match on 2026-06-25 and 2026-06-26, replacing missing-only bonus rule
