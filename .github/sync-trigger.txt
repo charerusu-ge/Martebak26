@@ -1,2 +1,2 @@
-sync requested at 2026-06-27T14:37:00+07:00
-reason: make 2026-06-25 and 2026-06-26 prediction point exclusions permanent by match date so sync/startup cannot revert ranking
+sync requested at 2026-06-27T14:47:00+07:00
+reason: show 2026-06-25 and 2026-06-26 prediction cancellation and +1 compensation labels in hasil menu
